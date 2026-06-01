@@ -23,9 +23,13 @@ def assemble_context(vector_results: List[HybridHit], graph_context: GraphContex
         for row in graph_context.direct_interactions:
             d1 = row.get("drug1")
             d2 = row.get("drug2")
+            rel = row.get("relation") or "INTERACTS_WITH"
             it = row.get("interaction_type")
             ev = row.get("evidence")
-            lines.append(f"- {d1} INTERACTS_WITH {d2}: {it} — \"{ev}\"")
+            if it:
+                lines.append(f"- {d1} {rel} {d2}: {it} — \"{ev}\"")
+            else:
+                lines.append(f"- {d1} {rel} {d2} — \"{ev}\"")
     else:
         lines.append("(none)")
 

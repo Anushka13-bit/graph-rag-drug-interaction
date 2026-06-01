@@ -179,30 +179,89 @@ def upsert_relation(
 
 
 def batch_upsert_relations(client: Neo4jClient, relations: List[ExtractedRelation]) -> None:
-    """Batch MERGE drug-drug INTERACTS_WITH rows using UNWIND."""
-    rows = [
-        {
-            "subject": r.subject.strip(),
-            "object": r.object.strip(),
+    """Batch MERGE relations of various predicates (INTERACTS_WITH, CAUSES, TREATS, etc.)."""
+    from collections import defaultdict
+    by_predicate = defaultdict(list)
+    for r in relations:
+        subj = r.subject.strip()
+        obj = r.object.strip()
+        if not subj or not obj:
+            continue
+        pred = (r.predicate or "INTERACTS_WITH").upper().strip()
+        if pred.startswith("INTERACTS_WITH"):
+            pred = "INTERACTS_WITH"
+        by_predicate[pred].append({
+            "subject": subj,
+            "object": obj,
             "interaction_type": r.interaction_type,
-            "confidence": float(r.confidence),
-            "evidence": r.evidence_text,
-        }
-        for r in relations
-        if r.subject.strip() and r.object.strip()
-    ]
-    if not rows:
-        return
-    cypher = """
-    UNWIND $rows AS row
-    MERGE (s:Drug {name: row.subject})
-    MERGE (o:Drug {name: row.object})
-    MERGE (s)-[r:INTERACTS_WITH]->(o)
-    SET r.type = row.interaction_type,
-        r.confidence = row.confidence,
-        r.evidence = row.evidence
-    """
-    client.execute_write(cypher, {"rows": rows})
+            "confidence": float(r.confidence) if r.confidence is not None else 1.0,
+            "evidence": r.evidence_text or "",
+        })
+
+    for pred, rows in by_predicate.items():
+        if not rows:
+            continue
+        if pred == "INTERACTS_WITH":
+            cypher = """
+            UNWIND $rows AS row
+            MERGE (s:Drug {name: row.subject})
+            MERGE (o:Drug {name: row.object})
+            MERGE (s)-[r:INTERACTS_WITH]->(o)
+            SET r.type = row.interaction_type,
+                r.confidence = row.confidence,
+                r.evidence = row.evidence
+            """
+            client.execute_write(cypher, {"rows": rows})
+        elif pred == "CAUSES":
+            disease_rows = [{"name": r["object"]} for r in rows]
+            client.execute_write("UNWIND $rows AS row MERGE (d:Disease {name: row.name})", {"rows": disease_rows})
+            cypher = """
+            UNWIND $rows AS row
+            MERGE (s:Drug {name: row.subject})
+            MERGE (o:Disease {name: row.object})
+            MERGE (s)-[r:CAUSES]->(o)
+            SET r.confidence = row.confidence,
+                r.evidence = row.evidence
+            """
+            client.execute_write(cypher, {"rows": rows})
+        elif pred == "TREATS":
+            disease_rows = [{"name": r["object"]} for r in rows]
+            client.execute_write("UNWIND $rows AS row MERGE (d:Disease {name: row.name})", {"rows": disease_rows})
+            cypher = """
+            UNWIND $rows AS row
+            MERGE (s:Drug {name: row.subject})
+            MERGE (o:Disease {name: row.object})
+            MERGE (s)-[r:TREATS]->(o)
+            SET r.confidence = row.confidence,
+                r.evidence = row.evidence
+            """
+            client.execute_write(cypher, {"rows": rows})
+        elif pred == "INHIBITS":
+            mechanism_rows = [{"description": r["object"]} for r in rows]
+            client.execute_write("UNWIND $rows AS row MERGE (m:Mechanism {description: row.description})", {"rows": mechanism_rows})
+            cypher = """
+            UNWIND $rows AS row
+            MERGE (s:Drug {name: row.subject})
+            MERGE (o:Mechanism {description: row.object})
+            MERGE (s)-[r:INHIBITS]->(o)
+            SET r.confidence = row.confidence,
+                r.evidence = row.evidence
+            """
+            client.execute_write(cypher, {"rows": rows})
+        elif pred == "INDUCES":
+            mechanism_rows = [{"description": r["object"]} for r in rows]
+            client.execute_write("UNWIND $rows AS row MERGE (m:Mechanism {description: row.description})", {"rows": mechanism_rows})
+            cypher = """
+            UNWIND $rows AS row
+            MERGE (s:Drug {name: row.subject})
+            MERGE (o:Mechanism {description: row.object})
+            MERGE (s)-[r:INDUCES]->(o)
+            SET r.confidence = row.confidence,
+                r.evidence = row.evidence
+            """
+            client.execute_write(cypher, {"rows": rows})
+        else:
+            logger.warning("Unsupported predicate for batch_upsert_relations: %s", pred)
 
 
 def link_sequential_chunks(

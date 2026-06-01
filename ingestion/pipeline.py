@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import logging
 from dataclasses import dataclass
 from typing import List
 
@@ -14,6 +14,7 @@ from embeddings.faiss_store import build_index
 from embeddings.neo4j_vector_store import Neo4jVectorStore
 from graph import graph_builder as gb
 from graph.neo4j_client import Neo4jClient
+from ingestion.brat_parser import is_brat_corpus, parse_brat_corpus
 from ingestion.chunker import chunk_documents
 from ingestion.document_loader import load_ddi_corpus, load_pdfs
 from ingestion.entity_extractor import extract_entities_from_pdf_text
@@ -25,6 +26,8 @@ from ingestion.relation_extractor import (
 from ingestion.xml_parser import parse_ddi_xml_file
 from reasoning.llm_client import get_chat_model
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class IngestionStats:
@@ -32,10 +35,12 @@ class IngestionStats:
     entities_created: int = 0
     relations_created: int = 0
     chunks_indexed: int = 0
+    train_documents: int = 0
+    test_documents: int = 0
 
 
 class IngestionPipeline:
-    """High-level ingestion for DDICorpus XML and PDFs."""
+    """High-level ingestion for DDICorpus (Brat Train+Test or XML) and PDFs."""
 
     def __init__(self, client: Neo4jClient, settings: Settings | None = None) -> None:
         self.client = client
@@ -47,22 +52,45 @@ class IngestionPipeline:
             dimensions=self.settings.embedding_dimension,
         )
 
-    def run_ddicopus(self, data_dir: str) -> IngestionStats:
-        """Parse DDICorpus XML, build graph, embed chunks, and index vectors."""
-        stats = IngestionStats()
-        self.vector.ensure_vector_index()
-        all_relations: List[ExtractedRelation] = []
-        drug_names: List[str] = []
+    def _collect_sentences(self, data_dir: str) -> list:
+        """Parse Brat (Train+Test) or XML corpus into DDISentence list."""
+        if is_brat_corpus(data_dir):
+            sents = parse_brat_corpus(data_dir)
+            logger.info(
+                "Brat corpus: %s documents (Train+Test combined) from %s",
+                len(sents),
+                data_dir,
+            )
+            return sents
+        import os
+
+        sents = []
         for root, _dirs, files in os.walk(data_dir):
             for name in files:
                 if not name.lower().endswith(".xml"):
                     continue
                 path = os.path.join(root, name)
-                for sent in parse_ddi_xml_file(path):
-                    rels = relations_from_ddi_sentence(sent)
-                    all_relations.extend(rels)
-                    for r in rels:
-                        drug_names.extend([r.subject, r.object])
+                sents.extend(parse_ddi_xml_file(path))
+        return sents
+
+    def run_ddicopus(self, data_dir: str) -> IngestionStats:
+        """Parse DDICorpus (Brat or XML), build graph, embed chunks, index vectors."""
+        stats = IngestionStats()
+        self.vector.ensure_vector_index()
+
+        sentences = self._collect_sentences(data_dir)
+        all_relations: List[ExtractedRelation] = []
+        drug_names: List[str] = []
+        for sent in sentences:
+            rels = relations_from_ddi_sentence(sent)
+            all_relations.extend(rels)
+            for r in rels:
+                drug_names.extend([r.subject, r.object])
+            if sent.split == "Train":
+                stats.train_documents += 1
+            elif sent.split == "Test":
+                stats.test_documents += 1
+
         gb.batch_upsert_drugs(self.client, drug_names)
         gb.batch_upsert_relations(self.client, all_relations)
         stats.relations_created = len(all_relations)

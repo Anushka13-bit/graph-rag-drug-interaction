@@ -31,6 +31,8 @@ class DDISentence:
     text: str
     entities: List[Entity] = field(default_factory=list)
     pairs: List[Pair] = field(default_factory=list)
+    source_file: str = ""
+    split: str = ""
 
 
 def _parse_entity(elem: ET.Element) -> Entity:

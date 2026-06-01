@@ -34,7 +34,7 @@ Production-oriented hybrid **Graph-RAG** stack for **drug–drug interaction (DD
 - **Docker** and **Docker Compose** (for Neo4j + optional app container)
 - **Python 3.11+** (3.11 recommended; 3.12+ generally works)
 - **Ollama** running locally when `USE_OPENAI=false` (e.g. `mistral` or `llama3`)
-- **DDICorpus** XML files placed under `data/raw/` (see [DDICorpus](https://github.com/isegura/DDICorpus))
+- **DDICorpus Brat** under `data/raw/DDICorpusBrat 2/` with `Train/` and `Test/` (see [DDICorpus](https://github.com/isegura/DDICorpus))
 
 ## Quick setup
 
@@ -71,10 +71,10 @@ pip install -r requirements.txt
 python scripts/setup_neo4j_schema.py
 ```
 
-6. **Ingest DDICorpus** (XML under `./data/raw/DDICorpus` or pass `--data-dir`)
+6. **Ingest DDICorpus Brat** (combines **Train** + **Test** into one Neo4j graph)
 
 ```bash
-python scripts/ingest_ddicopus.py --data-dir ./data/raw/DDICorpus
+python scripts/ingest_ddicopus.py --data-dir "./data/raw/DDICorpusBrat 2"
 ```
 
 7. **Run API**
@@ -122,7 +122,7 @@ curl -N -X POST http://localhost:8000/query \
 ```bash
 curl -s -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
-  -d '{"data_type":"ddicopus","path":"./data/raw/DDICorpus"}'
+  -d '{"data_type":"ddicopus","path":"./data/raw/DDICorpusBrat 2"}'
 ```
 
 **Ingestion status**
@@ -171,6 +171,60 @@ In `.env`:
   - `OPENAI_API_KEY=sk-...`  
   - For embeddings, set `EMBEDDING_DIMENSION` to match your OpenAI embedding size (e.g. `1536` for `text-embedding-3-small` unless using a reduced dimension).  
   - Re-run `python scripts/setup_neo4j_schema.py` after changing embedding dimension so the Neo4j vector index matches.
+
+## Test the prototype in Swagger UI
+
+1. **Start Neo4j** (if not already running):
+
+```bash
+docker compose up -d neo4j
+```
+
+2. **Apply schema** (once per fresh Neo4j volume):
+
+```bash
+python scripts/setup_neo4j_schema.py
+```
+
+3. **Ingest Train + Test Brat data** (CLI is faster for ~1000 documents; API also works):
+
+```bash
+python scripts/ingest_ddicopus.py --data-dir "./data/raw/DDICorpusBrat 2"
+```
+
+4. **Start the API** (from `biomedical-graphrag/`, using your venv):
+
+```bash
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+5. **Open Swagger UI** in a browser:
+
+   [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+6. **Try endpoints in this order:**
+
+   - **GET `/health`** → Execute → expect `"status": "ok"` when Neo4j is up.
+   - **POST `/ingest`** (optional if you used the CLI) → body:
+     ```json
+     {"data_type": "ddicopus", "path": "./data/raw/DDICorpusBrat 2"}
+     ```
+     Then **GET `/ingest/status`** until `"state": "done"`.
+   - **POST `/query`** → body example:
+     ```json
+     {
+       "question": "What is the interaction between abacavir and methadone?",
+       "top_k": 5,
+       "include_graph_paths": true,
+       "stream": false
+     }
+     ```
+   - **GET `/graph/entity/{name}`** → set `name` to e.g. `abacavir`.
+   - **GET `/graph/stats`** → node/relationship counts after ingestion.
+
+7. **Ollama**: with `USE_OPENAI=false`, run `ollama serve` and ensure `OLLAMA_MODEL` (e.g. `mistral`) is pulled before `/query`.
+
+Alternative interactive docs: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
 
 ## CLI query loop
 

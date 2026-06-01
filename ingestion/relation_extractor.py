@@ -40,8 +40,12 @@ def _ddi_type_to_predicate(interaction_type: Optional[str]) -> str:
         return "INTERACTS_WITH_MECHANISM"
     if t == "advise":
         return "INTERACTS_WITH_ADVISE"
-    if t == "int":
+    if t in ("int", "interaction"):
         return "INTERACTS_WITH"
+    if t == "causes":
+        return "CAUSES"
+    if t == "treats":
+        return "TREATS"
     return "INTERACTS_WITH"
 
 

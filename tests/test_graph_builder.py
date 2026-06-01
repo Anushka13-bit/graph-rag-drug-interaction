@@ -27,13 +27,47 @@ def test_batch_upsert_relations() -> None:
     c = FakeClient()
     rels = [
         ExtractedRelation(
-            subject="a",
+            subject="DrugA",
             predicate="INTERACTS_WITH_EFFECT",
-            object="b",
+            object="DrugB",
             interaction_type="effect",
             confidence=1.0,
-            evidence_text="ev",
-        )
+            evidence_text="ev1",
+        ),
+        ExtractedRelation(
+            subject="DrugA",
+            predicate="CAUSES",
+            object="DiseaseX",
+            confidence=0.9,
+            evidence_text="ev2",
+        ),
+        ExtractedRelation(
+            subject="DrugB",
+            predicate="TREATS",
+            object="DiseaseY",
+            confidence=0.85,
+            evidence_text="ev3",
+        ),
+        ExtractedRelation(
+            subject="DrugA",
+            predicate="INHIBITS",
+            object="Mech1",
+            confidence=0.95,
+            evidence_text="ev4",
+        ),
+        ExtractedRelation(
+            subject="DrugB",
+            predicate="INDUCES",
+            object="Mech2",
+            confidence=0.75,
+            evidence_text="ev5",
+        ),
     ]
     gb.batch_upsert_relations(c, rels)
-    assert c.writes
+    assert len(c.writes) > 0
+    queries = [q for q, _ in c.writes]
+    assert any("INTERACTS_WITH" in q for q in queries)
+    assert any("CAUSES" in q for q in queries)
+    assert any("TREATS" in q for q in queries)
+    assert any("INHIBITS" in q for q in queries)
+    assert any("INDUCES" in q for q in queries)

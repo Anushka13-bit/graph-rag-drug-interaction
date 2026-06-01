@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI: ingest DDICorpus XML into Neo4j and vector indexes."""
+"""CLI: ingest DDICorpus (Brat Train+Test or XML) into Neo4j and vector indexes."""
 
 from __future__ import annotations
 
@@ -17,11 +17,11 @@ from ingestion.pipeline import IngestionPipeline
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest DDICorpus XML")
+    parser = argparse.ArgumentParser(description="Ingest DDICorpus Brat or XML")
     parser.add_argument(
         "--data-dir",
-        default="./data/raw/DDICorpus",
-        help="Directory containing DDICorpus XML files",
+        default="./data/raw/DDICorpusBrat 2",
+        help="Brat corpus root (with Train/ and Test/) or XML folder",
     )
     args = parser.parse_args()
     settings = get_settings()

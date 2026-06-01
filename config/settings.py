@@ -37,12 +37,14 @@ class Settings(BaseSettings):
         alias="EMBEDDING_MODEL",
     )
     embedding_dimension: int = Field(default=384, alias="EMBEDDING_DIMENSION")
+    # auto | ollama | huggingface — use ollama for nomic-embed-text, etc.
+    embedding_backend: str = Field(default="auto", alias="EMBEDDING_BACKEND")
 
     neo4j_vector_index_name: str = Field(default="drug_chunks", alias="NEO4J_VECTOR_INDEX_NAME")
     chunk_size: int = Field(default=512, alias="CHUNK_SIZE")
     chunk_overlap: int = Field(default=64, alias="CHUNK_OVERLAP")
 
-    data_dir: str = Field(default="./data/raw", alias="DATA_DIR")
+    data_dir: str = Field(default="./data/raw/DDICorpusBrat 2", alias="DATA_DIR")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     def get_llm(self, **kwargs: Any) -> BaseChatModel:
@@ -62,7 +64,7 @@ class Settings(BaseSettings):
         )
 
     def get_embeddings(self, **kwargs: Any) -> Embeddings:
-        """Return OpenAIEmbeddings or HuggingFaceEmbeddings based on USE_OPENAI."""
+        """Return embeddings matching the configured backend (OpenAI / Ollama / HuggingFace)."""
         if self.use_openai:
             if not self.openai_api_key:
                 raise ValueError("OPENAI_API_KEY is required when USE_OPENAI=true")
@@ -70,6 +72,15 @@ class Settings(BaseSettings):
                 model=kwargs.pop("model", "text-embedding-3-small"),
                 api_key=self.openai_api_key,
                 **kwargs,
+            )
+        from embeddings.embedder import resolve_embedding_backend
+
+        if resolve_embedding_backend(self) == "ollama":
+            from langchain_ollama import OllamaEmbeddings
+
+            return OllamaEmbeddings(
+                model=kwargs.pop("model", self.embedding_model),
+                base_url=kwargs.pop("base_url", self.ollama_base_url),
             )
         return HuggingFaceEmbeddings(
             model_name=kwargs.pop("model_name", self.embedding_model),
