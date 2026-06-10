@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 data/raw/**/*.xml
+backend/data/raw/
 data/embeddings/**
 *.faiss
 *.pkl
@@ -15,3 +16,50 @@ build/
 *.egg-info/
 .DS_Store
 **/.DS_Store
+
+# Backend dependencies
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/*.py[cod]
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# Frontend dependencies
+frontend/node_modules/
+
+# Build outputs
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/out/
+
+# Cache
+frontend/.cache/
+frontend/.parcel-cache/
+frontend/.vite/
+frontend/.eslintcache
+
+# Environment files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# Coverage
+frontend/coverage/
+
+# OS files
+frontend/.DS_Store
+frontend/**/.DS_Store
+Thumbs.db
+
+# IDE files
+frontend/.vscode/
+frontend/.idea/

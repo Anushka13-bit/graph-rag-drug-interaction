@@ -1,3 +1,0 @@
-T1	DRUG 7 19	amyl nitrite
-T2	DRUG 35 42	alcohol
-R1	EFFECT Arg1:T1 Arg2:T2
