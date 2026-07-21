@@ -92,56 +92,58 @@ def parse_brat_document(txt_path: str, ann_path: Optional[str] = None) -> DDISen
     )
 
 
-def _collect_txt_ann_pairs(root: Path) -> List[Tuple[str, str]]:
-    """Find all .txt files with optional .ann under root."""
-    pairs: List[Tuple[str, str]] = []
-    for dirpath, _dirnames, filenames in os.walk(root):
+def _collect_txt_ann_pairs(root: Path):
+    pairs = []
+
+    print("Walking:", root)
+
+    count = 0
+
+    for dirpath, _, filenames in os.walk(root):
+        print("Directory:", dirpath)
+
         for name in filenames:
-            if not name.lower().endswith(".txt"):
-                continue
-            txt = os.path.join(dirpath, name)
-            ann = str(Path(txt).with_suffix(".ann"))
-            pairs.append((txt, ann if os.path.isfile(ann) else ""))
+            if name.endswith(".txt"):
+                count += 1
+                print(count, name)
+
+                txt = os.path.join(dirpath, name)
+                ann = str(Path(txt).with_suffix(".ann"))
+
+                pairs.append((txt, ann if os.path.isfile(ann) else ""))
+
+    print("Finished collecting", len(pairs), "files")
     return pairs
 
 
-def parse_brat_corpus(data_dir: str) -> List[DDISentence]:
-    """
-    Parse DDICorpus Brat layout: combines Train/ and Test/ (and any other splits).
-
-    Expected layout::
-        data_dir/Train/MedLine/*.txt + *.ann
-        data_dir/Test/DrugBank/*.txt + *.ann
-    """
+def parse_brat_corpus(data_dir: str):
     base = Path(data_dir)
-    if not base.is_dir():
-        raise FileNotFoundError(f"Brat corpus directory not found: {data_dir}")
 
-    search_roots: List[Path] = []
-    seen_roots: set[str] = set()
-    for split in ("Train", "Test"):
-        split_path = base / split
-        if not split_path.is_dir():
-            continue
-        key = os.path.normcase(str(split_path.resolve()))
-        if key in seen_roots:
-            continue
-        seen_roots.add(key)
-        search_roots.append(split_path)
-    if not search_roots:
-        search_roots.append(base)
+    search_roots = [base / "Train", base / "Test"]
 
-    sentences: List[DDISentence] = []
-    seen: set[str] = set()
+    sentences = []
+
+    count = 0
+
     for root in search_roots:
+        print("Scanning", root)
+
         for txt_path, ann_path in _collect_txt_ann_pairs(root):
-            dedupe_key = os.path.normcase(os.path.abspath(txt_path))
-            if dedupe_key in seen:
-                continue
-            seen.add(dedupe_key)
+
+            count += 1
+
+            if count % 50 == 0:
+                print("Parsed", count)
+
             sentences.append(
-                parse_brat_document(txt_path, ann_path if ann_path else None)
+                parse_brat_document(
+                    txt_path,
+                    ann_path if ann_path else None,
+                )
             )
+
+    print("Finished")
+
     return sentences
 
 

@@ -17,6 +17,8 @@ from ingestion.pipeline import IngestionPipeline
 
 
 def main() -> None:
+    print("1. Starting script")
+
     parser = argparse.ArgumentParser(description="Ingest DDICorpus Brat or XML")
     parser.add_argument(
         "--data-dir",
@@ -24,19 +26,28 @@ def main() -> None:
         help="Brat corpus root (with Train/ and Test/) or XML folder",
     )
     args = parser.parse_args()
+
+    print("2. Loading settings")
     settings = get_settings()
+
+    print("3. Creating Neo4j client")
     client = Neo4jClient(
         settings.neo4j_uri,
         settings.neo4j_username,
         settings.neo4j_password,
         settings.neo4j_database,
     )
-    try:
-        pipe = IngestionPipeline(client, settings)
-        stats = pipe.run_ddicopus(args.data_dir)
-        print("Ingestion complete:", stats)
-    finally:
-        client.close()
+
+    print("4. Creating pipeline")
+    pipe = IngestionPipeline(client, settings)
+
+    print("5. Running ingestion")
+    stats = pipe.run_ddicopus(args.data_dir)
+
+    print("6. Finished")
+    print(stats)
+
+    client.close()
 
 
 if __name__ == "__main__":

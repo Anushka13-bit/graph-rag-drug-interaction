@@ -82,6 +82,8 @@ export default function App() {
           confidence={data ? (interactions.length > 0 ? 'Available' : 'Low') : '—'}
         />
 
+        <SummaryPanel summary={data?.summary} severity={maxSeverity} />
+
         <div className="results-grid">
           <InteractionCards interactions={interactions} />
           <NetworkGraph graphData={data?.graph_data} />
@@ -89,7 +91,7 @@ export default function App() {
 
         <div className="charts-row">
           <SeverityChart counts={severityCounts} hasData={interactions.length > 0} />
-          <SummaryPanel summary={data?.summary} />
+          {/* SummaryPanel moved up */}
         </div>
 
         <JsonPanel data={data} />

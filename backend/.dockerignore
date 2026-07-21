@@ -1,0 +1,29 @@
+# Virtual Environments
+.venv
+venv
+env
+
+# Python Cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Data / Datasets
+data/raw/
+data/embeddings/
+*.faiss
+*.pkl
+
+# Git
+.git
+.gitignore
+
+.env
+
+# IDEs
+.vscode/
+.idea/

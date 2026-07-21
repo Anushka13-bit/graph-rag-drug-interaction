@@ -45,7 +45,11 @@ class IngestionPipeline:
     def __init__(self, client: Neo4jClient, settings: Settings | None = None) -> None:
         self.client = client
         self.settings = settings or get_settings()
+    
+        
+        print("Loading embedder...")
         self.embedder = get_embedder(self.settings)
+        print("Embedder loaded.")
         self.vector = Neo4jVectorStore(
             client,
             index_name=self.settings.neo4j_vector_index_name,
@@ -74,67 +78,109 @@ class IngestionPipeline:
         return sents
 
     def run_ddicopus(self, data_dir: str) -> IngestionStats:
-        """Parse DDICorpus (Brat or XML), build graph, embed chunks, index vectors."""
         stats = IngestionStats()
-        self.vector.ensure_vector_index()
 
+        print("1. Creating vector index")
+        self.vector.ensure_vector_index()
+        print("Done")
+
+        print("2. Collecting sentences")
+        print("Collecting corpus...")
         sentences = self._collect_sentences(data_dir)
-        all_relations: List[ExtractedRelation] = []
-        drug_names: List[str] = []
+        print(f"Collected {len(sentences)} sentences")
+        sentences = self._collect_sentences(data_dir)
+        print("Sentences:", len(sentences))
+
+        print("3. Extracting relations")
+        all_relations = []
+        drug_names = []
+
         for sent in sentences:
             rels = relations_from_ddi_sentence(sent)
             all_relations.extend(rels)
+
             for r in rels:
                 drug_names.extend([r.subject, r.object])
-            if sent.split == "Train":
-                stats.train_documents += 1
-            elif sent.split == "Test":
-                stats.test_documents += 1
 
+        print("Relations:", len(all_relations))
+        print("Unique drugs:", len(set(drug_names)))
+
+        print("4. Writing drugs")
+        print("Creating drug nodes...")
         gb.batch_upsert_drugs(self.client, drug_names)
-        gb.batch_upsert_relations(self.client, all_relations)
-        stats.relations_created = len(all_relations)
-        stats.entities_created = len(set(drug_names))
+        print("Drug nodes done")
+        print("Done")
 
+        print("5. Writing relations")
+        gb.batch_upsert_relations(self.client, all_relations)
+        print("Done")
+
+        print("6. Loading documents")
         docs = load_ddi_corpus(data_dir)
-        stats.documents_processed = len(docs)
+        print("Documents:", len(docs))
+
+        print("7. Chunking")
         chunks = chunk_documents(docs, self.settings)
+        print("Chunks:", len(chunks))
+
         texts = [c.page_content for c in chunks]
-        embeddings = self.embedder.embed_batch(texts) if texts else []
-        rows: list[dict] = []
-        links: list[dict] = []
+
+        print("8. Generating embeddings")
+        embeddings = self.embedder.embed_batch(texts)
+        print("Embeddings generated:", len(embeddings))
+
+        rows = []
+        links = []
+
+        print("9. Preparing rows")
+
         for i, ch in enumerate(chunks):
-            cid = str(ch.metadata.get("chunk_id") or f"{ch.metadata.get('sentence_id', 'unk')}::{i}")
-            emb = embeddings[i] if i < len(embeddings) else None
+            cid = str(ch.metadata.get("chunk_id") or i)
+
             rows.append(
                 {
                     "chunk_id": cid,
                     "text": ch.page_content,
-                    "source": str(ch.metadata.get("source_file") or ch.metadata.get("sentence_id") or ""),
+                    "source": str(ch.metadata.get("source_file") or ""),
                     "page": ch.metadata.get("page"),
                     "chunk_index": ch.metadata.get("chunk_index", 0),
-                    "embedding": emb,
+                    "embedding": embeddings[i],
                 }
             )
+
             for drug in ch.metadata.get("drugs") or []:
-                links.append({"drug": str(drug), "chunk_id": cid})
+                links.append(
+                    {
+                        "drug": drug,
+                        "chunk_id": cid,
+                    }
+                )
+
+        print("Rows:", len(rows))
+        print("Links:", len(links))
+
+        print("10. Writing chunks")
         gb.batch_upsert_chunks(self.client, rows)
+        print("Done")
+
+        print("11. Linking chunks")
         gb.batch_link_drugs_to_chunks(self.client, links)
+        print("Done")
+
+        stats.documents_processed = len(docs)
+        stats.entities_created = len(set(drug_names))
+        stats.relations_created = len(all_relations)
         stats.chunks_indexed = len(rows)
 
-        by_source: dict[str, list[str]] = {}
-        for ch in chunks:
-            cid = str(ch.metadata.get("chunk_id"))
-            src = str(ch.metadata.get("source_file") or "")
-            by_source.setdefault(src, []).append(cid)
-        for src, ids in by_source.items():
-            if len(ids) > 1:
-                gb.link_sequential_chunks(self.client, ids, src)
+        print("12. Building FAISS")
 
         try:
             build_index(chunks, self.settings)
-        except Exception:
-            pass
+        except Exception as e:
+            print("FAISS skipped:", e)
+
+        print("Finished")
+
         return stats
 
     def run_pdfs(self, pdf_dir: str) -> IngestionStats:
